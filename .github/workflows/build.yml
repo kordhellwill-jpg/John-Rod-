@@ -1,0 +1,710 @@
+name: john-rod
+on:
+  push:
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 8
+      - name: Generate project
+        run: |
+          git clone --depth 1 https://github.com/StandoByte/RotP-Addon-example.git tpl
+          python3 -c "import PIL" 2>/dev/null || python3 -m pip install --quiet pillow || python3 -m pip install --quiet --break-system-packages pillow
+          set -e
+          BASE=$PWD
+          SRC=$BASE/tpl
+          OUT=$BASE/out
+          rm -rf $OUT && mkdir -p $OUT && cd $SRC
+          cp -r gradle gradlew gradlew.bat .gitignore .gitattributes LICENSE gradle.properties $OUT/
+          sed -e "s/archivesBaseName = 'RotP-AddonExample'/archivesBaseName = 'RotP-JohnRod'/" -e "s/com.yourname.modid/com.rotpaddon.johnrod/" build.gradle > $OUT/build.gradle
+          P=$OUT/src/main/java/com/rotpaddon/johnrod
+          R=$OUT/src/main/resources
+          A=$R/assets/rotp_johnrod
+          mkdir -p $P/init $P/action $P/entity $P/client/render $R/META-INF $A/lang $A/geo $A/textures/action $A/textures/entity/stand $A/textures/power
+          sed -e 's/myrotpaddon/rotp_johnrod/g' -e 's/Example RotP Stand Addon/RotP John Rod/' -e 's/A template for making Stand addons for Ripples of the Past mod./Adds the Stand JOHN ROD from The JOJOLands: rods of light that hunt a marked target./' -e 's/^logoFile=.*$//' src/main/resources/META-INF/mods.toml > $R/META-INF/mods.toml
+          cp src/main/resources/pack.mcmeta $R/
+          T=src/main/resources/assets/myrotpaddon/textures/action
+          cp $T/example_stand_punch.png $A/textures/action/john_rod_punch.png
+          cp $T/example_stand_barrage.png $A/textures/action/john_rod_barrage.png
+          cp $T/example_stand_block.png $A/textures/action/john_rod_block.png
+          python3 - "$SRC" "$A" <<'PYEND'
+          import sys, json
+          from PIL import Image, ImageDraw
+          src, a = sys.argv[1], sys.argv[2]
+
+          # ---------------- geometry: a stick figure built from rods (ring head, angular torso, two long legs)
+          geo = json.load(open(src + '/src/main/resources/assets/myrotpaddon/geo/example_stand.geo.json'))
+          g = geo['minecraft:geometry'][0]
+          g['description']['identifier'] = 'geometry.JohnRod'
+          Z = -0.5
+          def cube(x, y, z, w, h, d):
+              return {'origin': [x, y, z], 'size': [w, h, d], 'uv': [0, 0]}
+          cubes = {
+              'head': [cube(-1.5, 30.5, Z, 3, 1, 1), cube(-1.5, 24.5, Z, 3, 1, 1), cube(-3.5, 26.5, Z, 1, 3, 1), cube(2.5, 26.5, Z, 1, 3, 1),
+                       cube(-2.5, 29.5, Z, 1, 1, 1), cube(1.5, 29.5, Z, 1, 1, 1), cube(-2.5, 25.5, Z, 1, 1, 1), cube(1.5, 25.5, Z, 1, 1, 1)],
+              'torso': [cube(-0.5, 22, Z, 1, 2.5, 1), cube(-4.5, 21, Z, 9, 1, 1), cube(3.5, 17, Z, 1, 4, 1), cube(-4.5, 17, Z, 1, 4, 1),
+                        cube(2.5, 13, Z, 1, 4, 1), cube(-3.5, 13, Z, 1, 4, 1), cube(-2.5, 12.2, Z, 5, 1, 1)],
+              'leftLeg': [cube(1.4, 6, Z, 1, 6, 1)],
+              'leftLowerLeg': [cube(1.4, 0, Z, 1, 6, 1), cube(1.4, 0, Z - 1.5, 1, 1, 2)],
+              'rightLeg': [cube(-2.4, 6, Z, 1, 6, 1)],
+              'rightLowerLeg': [cube(-2.4, 0, Z, 1, 6, 1), cube(-2.4, 0, Z - 1.5, 1, 1, 2)],
+          }
+          g['bones'] = [b for b in g['bones'] if b['name'] != 'pickaxe']
+          for b in g['bones']:
+              b.pop('cubes', None)
+              if b['name'] in cubes:
+                  b['cubes'] = cubes[b['name']]
+          json.dump(geo, open(a + '/geo/john_rod.geo.json', 'w'))
+
+          # ---------------- textures: glowing white-blue rods and the ability icons
+          tex = Image.new('RGBA', (128, 128))
+          px = tex.load()
+          for y in range(128):
+              for x in range(128):
+                  t = ((x * 7 + y * 13) % 17) / 17.0
+                  px[x, y] = (int(236 + 10 * t), int(246 + 6 * t), 255, 255)
+          tex.save(a + '/textures/entity/stand/john_rod.png')
+
+          W = (235, 245, 255, 255)
+          C = (110, 230, 255, 255)
+          def icon(path, size, draw_fn):
+              im = Image.new('RGBA', (size, size), (30, 34, 60, 255))
+              draw_fn(ImageDraw.Draw(im))
+              im.save(path)
+          def mark(d):
+              d.ellipse([6, 6, 25, 25], outline=W, width=2)
+              d.line([16, 1, 16, 10], fill=W, width=2); d.line([16, 22, 16, 31], fill=W, width=2)
+              d.line([1, 16, 10, 16], fill=W, width=2); d.line([22, 16, 31, 16], fill=W, width=2)
+              d.ellipse([14, 14, 17, 17], fill=C)
+          def hunt(d):
+              d.line([10, 2, 10, 22], fill=W, width=3); d.line([21, 6, 21, 26], fill=W, width=3)
+              d.polygon([(10, 28), (7, 22), (13, 22)], fill=C); d.polygon([(21, 30), (18, 24), (24, 24)], fill=C)
+          def touch(d):
+              d.ellipse([11, 2, 21, 12], outline=W, width=2); d.line([16, 12, 16, 20], fill=W, width=2)
+              d.line([16, 20, 9, 30], fill=W, width=2); d.line([16, 20, 23, 30], fill=W, width=2)
+              for x, y in ((24, 24), (27, 27), (22, 28)):
+                  d.ellipse([x - 2, y - 2, x + 2, y + 2], fill=C)
+          def power(d):
+              d.ellipse([5, 1, 11, 7], outline=W, width=1); d.line([8, 7, 8, 10], fill=W); d.line([4, 10, 12, 10], fill=W)
+              d.line([8, 10, 5, 15], fill=W); d.line([8, 10, 11, 15], fill=W)
+          icon(a + '/textures/action/john_rod_mark.png', 32, mark)
+          icon(a + '/textures/action/john_rod_hunt.png', 32, hunt)
+          icon(a + '/textures/action/john_rod_touch.png', 32, touch)
+          icon(a + '/textures/power/john_rod.png', 16, power)
+          PYEND
+          cat > $A/lang/en_us.json <<'EOF'
+          {
+            "stand.rotp_johnrod.john_rod": "John Rod",
+            "entity.rotp_johnrod.john_rod": "John Rod",
+            "action.rotp_johnrod.john_rod_punch": "Rod Strike",
+            "action.rotp_johnrod.john_rod_barrage": "Rod Barrage",
+            "action.rotp_johnrod.john_rod_block": "Block",
+            "action.rotp_johnrod.john_rod_mark": "Mark Target",
+            "action.rotp_johnrod.john_rod_hunt": "Rods of Light (hunt the marked target)",
+            "action.rotp_johnrod.john_rod_touch": "Touch",
+            "rotp_johnrod.message.no_target": "No target in sight",
+            "rotp_johnrod.message.marked": "Marked: %s",
+            "rotp_johnrod.message.no_mark": "No marked target",
+            "rotp_johnrod.message.hunting": "The rods are descending on %s"
+          }
+          EOF
+          cat > $A/lang/ru_ru.json <<'EOF'
+          {
+            "stand.rotp_johnrod.john_rod": "Джон Род",
+            "entity.rotp_johnrod.john_rod": "Джон Род",
+            "action.rotp_johnrod.john_rod_punch": "Удар стержня",
+            "action.rotp_johnrod.john_rod_barrage": "Серия ударов",
+            "action.rotp_johnrod.john_rod_block": "Блок",
+            "action.rotp_johnrod.john_rod_mark": "Метка",
+            "action.rotp_johnrod.john_rod_hunt": "Стержни света (охота на метку)",
+            "action.rotp_johnrod.john_rod_touch": "Касание",
+            "rotp_johnrod.message.no_target": "Нет цели перед глазами",
+            "rotp_johnrod.message.marked": "Метка: %s",
+            "rotp_johnrod.message.no_mark": "Нет помеченной цели",
+            "rotp_johnrod.message.hunting": "Стержни света падают на %s"
+          }
+          EOF
+          cat > $P/AddonMain.java <<'EOF'
+          package com.rotpaddon.johnrod;
+
+          import org.apache.logging.log4j.LogManager;
+          import org.apache.logging.log4j.Logger;
+
+          import com.rotpaddon.johnrod.init.InitEntities;
+          import com.rotpaddon.johnrod.init.InitStands;
+
+          import net.minecraftforge.eventbus.api.IEventBus;
+          import net.minecraftforge.fml.common.Mod;
+          import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
+
+          @Mod(AddonMain.MOD_ID)
+          public class AddonMain {
+              public static final String MOD_ID = "rotp_johnrod";
+              public static final Logger LOGGER = LogManager.getLogger();
+
+              public AddonMain() {
+                  IEventBus modEventBus = FMLJavaModLoadingContext.get().getModEventBus();
+                  InitEntities.ENTITIES.register(modEventBus);
+                  InitStands.ACTIONS.register(modEventBus);
+                  InitStands.STANDS.register(modEventBus);
+              }
+          }
+          EOF
+          cat > $P/init/InitEntities.java <<'EOF'
+          package com.rotpaddon.johnrod.init;
+
+          import com.rotpaddon.johnrod.AddonMain;
+
+          import net.minecraft.entity.EntityType;
+          import net.minecraftforge.registries.DeferredRegister;
+          import net.minecraftforge.registries.ForgeRegistries;
+
+          public class InitEntities {
+              public static final DeferredRegister<EntityType<?>> ENTITIES = DeferredRegister.create(
+                      ForgeRegistries.ENTITIES, AddonMain.MOD_ID);
+          }
+          EOF
+          cat > $P/entity/JohnRodEntity.java <<'EOF'
+          package com.rotpaddon.johnrod.entity;
+
+          import com.github.standobyte.jojo.entity.stand.StandEntity;
+          import com.github.standobyte.jojo.entity.stand.StandEntityType;
+
+          import net.minecraft.world.World;
+
+          public class JohnRodEntity extends StandEntity {
+
+              public JohnRodEntity(StandEntityType<JohnRodEntity> type, World world) {
+                  super(type, world);
+              }
+          }
+          EOF
+          cat > $P/action/JohnRodAbility.java <<'EOF'
+          package com.rotpaddon.johnrod.action;
+
+          import com.github.standobyte.jojo.action.stand.StandEntityAction;
+          import com.github.standobyte.jojo.entity.stand.StandEntity;
+          import com.github.standobyte.jojo.entity.stand.StandEntityTask;
+          import com.github.standobyte.jojo.power.impl.stand.IStandPower;
+
+          import net.minecraft.entity.LivingEntity;
+          import net.minecraft.entity.player.PlayerEntity;
+          import net.minecraft.world.World;
+
+          // The three abilities of John Rod from the JOJOLands manga:
+          //   MARK  - lock onto a target (the Stand can find it wherever it goes)
+          //   HUNT  - two rods of light fall from the sky onto the marked target, join into a stick figure,
+          //           touch the target with a leg and kill it, then split up and rise back into the sky
+          //   TOUCH - the same touch, but on the target right in front of you
+          public class JohnRodAbility extends StandEntityAction {
+
+              public enum Mode { MARK, HUNT, TOUCH }
+
+              private final Mode mode;
+
+              public JohnRodAbility(StandEntityAction.Builder builder, Mode mode) {
+                  super(builder);
+                  this.mode = mode;
+              }
+
+              @Override
+              public void standPerform(World world, StandEntity standEntity, IStandPower userPower, StandEntityTask task) {
+                  if (world.isClientSide) return;
+                  LivingEntity user = standEntity.getUser();
+                  if (!(user instanceof PlayerEntity)) return;
+                  PlayerEntity player = (PlayerEntity) user;
+                  switch (mode) {
+                  case MARK:
+                      JohnRodHandler.mark(player);
+                      break;
+                  case HUNT:
+                      JohnRodHandler.hunt(player);
+                      break;
+                  case TOUCH:
+                      JohnRodHandler.touch(player);
+                      break;
+                  }
+              }
+          }
+          EOF
+          cat > $P/action/JohnRodHandler.java <<'EOF'
+          package com.rotpaddon.johnrod.action;
+
+          import java.util.ArrayList;
+          import java.util.HashMap;
+          import java.util.Iterator;
+          import java.util.List;
+          import java.util.Map;
+          import java.util.Optional;
+          import java.util.UUID;
+
+          import com.github.standobyte.jojo.entity.stand.StandEntity;
+          import com.rotpaddon.johnrod.AddonMain;
+
+          import net.minecraft.block.BlockState;
+          import net.minecraft.entity.Entity;
+          import net.minecraft.entity.LivingEntity;
+          import net.minecraft.entity.MobEntity;
+          import net.minecraft.entity.player.PlayerEntity;
+          import net.minecraft.particles.ParticleTypes;
+          import net.minecraft.potion.EffectInstance;
+          import net.minecraft.potion.Effects;
+          import net.minecraft.util.DamageSource;
+          import net.minecraft.util.math.AxisAlignedBB;
+          import net.minecraft.util.math.BlockPos;
+          import net.minecraft.util.math.vector.Vector3d;
+          import net.minecraft.util.text.TranslationTextComponent;
+          import net.minecraft.world.World;
+          import net.minecraft.world.server.ServerWorld;
+          import net.minecraftforge.event.TickEvent;
+          import net.minecraftforge.eventbus.api.SubscribeEvent;
+          import net.minecraftforge.fml.common.Mod;
+
+          // Marks, hunting sequences and the touch kill of John Rod.
+          @Mod.EventBusSubscriber(modid = AddonMain.MOD_ID)
+          public class JohnRodHandler {
+              private static final double MARK_RANGE = 48.0D;
+              private static final double TOUCH_RANGE = 5.0D;
+
+              // phases of the hunt (in ticks)
+              private static final int DESCEND_END = 30;   // two rods fall from the sky
+              private static final int JOIN_END = 45;      // they join into a stick figure
+              private static final int TOUCH_END = 75;     // the leg touches the target, round growths spread
+              private static final int ASCEND_END = 105;   // the rods split up and rise into the sky
+
+              private static final float PLAYER_DAMAGE = 14.0F;      // players survive (7 hearts, ignores armor)
+              private static final float MOB_DAMAGE = 1000.0F;       // mobs die
+              private static final float BOSS_DAMAGE = 60.0F;        // bosses (very high max health) do not die at once
+              private static final float BOSS_HEALTH = 150.0F;
+              private static final float MAX_BREAK_HARDNESS = 5.0F;  // the rods break through weak blocks (roofs, ceilings)
+
+              private static class Hunt {
+                  final UUID userId;
+                  final LivingEntity target;
+                  int ticks;
+                  boolean frozenAi = false;
+                  Hunt(UUID userId, LivingEntity target, int startTicks) {
+                      this.userId = userId; this.target = target; this.ticks = startTicks;
+                  }
+              }
+
+              private static final Map<UUID, LivingEntity> MARKS = new HashMap<>();
+              private static final List<Hunt> HUNTS = new ArrayList<>();
+
+              // ------------------------------------------------------------------ abilities
+
+              public static void mark(PlayerEntity player) {
+                  LivingEntity target = findTarget(player, MARK_RANGE);
+                  if (target == null) {
+                      player.displayClientMessage(new TranslationTextComponent("rotp_johnrod.message.no_target"), true);
+                      return;
+                  }
+                  MARKS.put(player.getUUID(), target);
+                  player.displayClientMessage(new TranslationTextComponent("rotp_johnrod.message.marked", target.getDisplayName()), true);
+              }
+
+              public static void hunt(PlayerEntity player) {
+                  LivingEntity target = MARKS.get(player.getUUID());
+                  if (target == null || !target.isAlive() || target.level != player.level) {
+                      MARKS.remove(player.getUUID());
+                      player.displayClientMessage(new TranslationTextComponent("rotp_johnrod.message.no_mark"), true);
+                      return;
+                  }
+                  if (isHunted(target)) return;
+                  HUNTS.add(new Hunt(player.getUUID(), target, 0));
+                  player.displayClientMessage(new TranslationTextComponent("rotp_johnrod.message.hunting", target.getDisplayName()), true);
+              }
+
+              public static void touch(PlayerEntity player) {
+                  LivingEntity target = findTarget(player, TOUCH_RANGE);
+                  if (target == null) {
+                      player.displayClientMessage(new TranslationTextComponent("rotp_johnrod.message.no_target"), true);
+                      return;
+                  }
+                  if (isHunted(target)) return;
+                  HUNTS.add(new Hunt(player.getUUID(), target, JOIN_END));   // skip the descent
+              }
+
+              private static boolean isHunted(LivingEntity target) {
+                  for (Hunt h : HUNTS) {
+                      if (h.target == target) return true;
+                  }
+                  return false;
+              }
+
+              private static LivingEntity findTarget(PlayerEntity player, double range) {
+                  World world = player.level;
+                  Vector3d from = player.getEyePosition(1.0F);
+                  Vector3d look = player.getLookAngle();
+                  Vector3d to = from.add(look.scale(range));
+                  LivingEntity best = null;
+                  double bestDist = range * range;
+                  AxisAlignedBB area = player.getBoundingBox().expandTowards(look.scale(range)).inflate(1.0D);
+                  List<Entity> candidates = world.getEntities(player, area,
+                          e -> e instanceof LivingEntity && !(e instanceof StandEntity) && e.isAlive());
+                  for (Entity e : candidates) {
+                      Optional<Vector3d> hit = e.getBoundingBox().inflate(0.4D).clip(from, to);
+                      if (hit.isPresent()) {
+                          double dist = from.distanceToSqr(hit.get());
+                          if (dist < bestDist) {
+                              bestDist = dist;
+                              best = (LivingEntity) e;
+                          }
+                      }
+                  }
+                  return best;
+              }
+
+              // ------------------------------------------------------------------ the hunt, tick by tick
+
+              @SubscribeEvent
+              public static void onWorldTick(TickEvent.WorldTickEvent event) {
+                  if (event.phase != TickEvent.Phase.END || event.world.isClientSide) return;
+                  if (!(event.world instanceof ServerWorld)) return;
+                  ServerWorld world = (ServerWorld) event.world;
+                  Iterator<Hunt> it = HUNTS.iterator();
+                  while (it.hasNext()) {
+                      Hunt h = it.next();
+                      if (h.target.level != world) continue;
+                      if (!h.target.isAlive()) {
+                          cleanup(h);
+                          it.remove();
+                          continue;
+                      }
+                      h.ticks++;
+                      if (step(world, h)) {
+                          cleanup(h);
+                          it.remove();
+                      }
+                  }
+              }
+
+              // returns true when the hunt is over
+              private static boolean step(ServerWorld world, Hunt h) {
+                  int t = h.ticks;
+                  LivingEntity target = h.target;
+                  Vector3d base = target.position();
+
+                  // the stick figure stands 1.3 blocks from the target, on the side of the user
+                  Vector3d facing = new Vector3d(1.0D, 0.0D, 0.0D);
+                  PlayerEntity user = world.getPlayerByUUID(h.userId);
+                  if (user != null) {
+                      Vector3d toUser = new Vector3d(user.getX() - base.x, 0.0D, user.getZ() - base.z);
+                    if (toUser.lengthSqr() > 1.0E-4D) facing = toUser.normalize();
+                  }
+                  Vector3d side = new Vector3d(-facing.z, 0.0D, facing.x);
+                  Vector3d figure = base.add(facing.scale(1.3D));
+
+                  if (t <= DESCEND_END) {
+                      // two rods of light fall onto the target from the sky, breaking through roofs and ceilings
+                      double height = 30.0D * (1.0D - t / (double) DESCEND_END);
+                      for (int s = -1; s <= 1; s += 2) {
+                          Vector3d rodBase = base.add(side.scale(0.5D * s)).add(0.0D, height, 0.0D);
+                          drawLine(world, rodBase, rodBase.add(0.0D, 4.0D, 0.0D));
+                          breakBlockAt(world, rodBase);
+                          breakBlockAt(world, rodBase.add(0.0D, 1.0D, 0.0D));
+                      }
+                  }
+                  else if (t <= JOIN_END) {
+                      // the rods bend and join into a stick figure
+                      drawStickman(world, figure, side);
+                  }
+                  else if (t <= TOUCH_END) {
+                      drawStickman(world, figure, side);
+                      // a leg reaches out and touches the target; round growths spread over it
+                      drawLine(world, point(figure, side, 0.3D, 0.85D), base.add(0.0D, target.getBbHeight() * 0.35D, 0.0D));
+                      int count = 2 + (t - JOIN_END) / 3;
+                      world.sendParticles(ParticleTypes.END_ROD, base.x, base.y + target.getBbHeight() / 2.0D, base.z,
+                              count, target.getBbWidth() / 2.0D, target.getBbHeight() / 2.0D, target.getBbWidth() / 2.0D, 0.02D);
+                      world.sendParticles(ParticleTypes.FIREWORK, base.x, base.y + target.getBbHeight() / 2.0D, base.z,
+                              1 + count / 3, target.getBbWidth() / 2.0D, target.getBbHeight() / 2.0D, target.getBbWidth() / 2.0D, 0.01D);
+                      freeze(h);
+                  }
+                  else if (t == TOUCH_END + 1) {
+                      kill(world, h, user);
+                  }
+                  else if (t <= ASCEND_END) {
+                      // the rods split up and rise back into the sky
+                      double height = (t - TOUCH_END) * 1.2D;
+                      for (int s = -1; s <= 1; s += 2) {
+                          Vector3d rodBase = figure.add(side.scale(0.5D * s)).add(0.0D, height, 0.0D);
+                          drawLine(world, rodBase, rodBase.add(0.0D, 4.0D, 0.0D));
+                      }
+                  }
+                  else {
+                      return true;
+                  }
+                  return false;
+              }
+
+              private static void freeze(Hunt h) {
+                  LivingEntity target = h.target;
+                  if (target instanceof MobEntity && !h.frozenAi) {
+                      ((MobEntity) target).setNoAi(true);
+                      h.frozenAi = true;
+                  }
+                  target.setDeltaMovement(0.0D, Math.min(0.0D, target.getDeltaMovement().y), 0.0D);
+                  target.hurtMarked = true;
+                  target.addEffect(new EffectInstance(Effects.MOVEMENT_SLOWDOWN, 5, 9, false, false));
+              }
+
+              private static void kill(ServerWorld world, Hunt h, PlayerEntity user) {
+                  LivingEntity target = h.target;
+                  if (target instanceof PlayerEntity) {
+                      DamageSource source = user != null ? DamageSource.indirectMagic(user, user) : DamageSource.MAGIC;
+                      target.hurt(source, PLAYER_DAMAGE);
+                  }
+                  else {
+                      float damage = target.getMaxHealth() >= BOSS_HEALTH ? BOSS_DAMAGE : MOB_DAMAGE;
+                      DamageSource source = user != null ? DamageSource.playerAttack(user) : DamageSource.MAGIC;
+                      target.invulnerableTime = 0;
+                      target.hurt(source, damage);
+                  }
+                  MARKS.values().removeIf(m -> m == target);
+                  world.sendParticles(ParticleTypes.END_ROD, target.getX(), target.getY() + target.getBbHeight() / 2.0D, target.getZ(),
+                          30, 0.4D, 0.6D, 0.4D, 0.1D);
+              }
+
+              private static void cleanup(Hunt h) {
+                  if (h.frozenAi && h.target.isAlive() && h.target instanceof MobEntity) {
+                      ((MobEntity) h.target).setNoAi(false);
+                  }
+              }
+
+              // ------------------------------------------------------------------ drawing and helpers
+
+              private static Vector3d point(Vector3d figure, Vector3d side, double x, double y) {
+                  return figure.add(side.scale(x)).add(0.0D, y, 0.0D);
+              }
+
+              private static void drawStickman(ServerWorld world, Vector3d figure, Vector3d side) {
+                  // circular head
+                  for (int i = 0; i < 14; i++) {
+                      double a = i * Math.PI * 2.0D / 14.0D;
+                      Vector3d p = point(figure, side, Math.cos(a) * 0.4D, 1.95D + Math.sin(a) * 0.4D);
+                      world.sendParticles(ParticleTypes.END_ROD, p.x, p.y, p.z, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+                  }
+                  // neck, angular torso
+                  drawLine(world, point(figure, side, 0.0D, 1.55D), point(figure, side, 0.0D, 1.3D));
+                  drawLine(world, point(figure, side, -0.55D, 1.3D), point(figure, side, 0.55D, 1.3D));
+                  drawLine(world, point(figure, side, 0.55D, 1.3D), point(figure, side, 0.35D, 0.85D));
+                  drawLine(world, point(figure, side, -0.55D, 1.3D), point(figure, side, -0.35D, 0.85D));
+                  drawLine(world, point(figure, side, -0.35D, 0.85D), point(figure, side, 0.35D, 0.85D));
+                  // two long legs
+                  drawLine(world, point(figure, side, 0.3D, 0.85D), point(figure, side, 0.35D, 0.0D));
+                  drawLine(world, point(figure, side, -0.3D, 0.85D), point(figure, side, -0.35D, 0.0D));
+              }
+
+              private static void drawLine(ServerWorld world, Vector3d from, Vector3d to) {
+                  Vector3d diff = to.subtract(from);
+                  int n = Math.max(1, (int) (diff.length() / 0.4D));
+                  for (int i = 0; i <= n; i++) {
+                      Vector3d p = from.add(diff.scale(i / (double) n));
+                      world.sendParticles(ParticleTypes.END_ROD, p.x, p.y, p.z, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+                  }
+              }
+
+              private static void breakBlockAt(ServerWorld world, Vector3d pos) {
+                  if (pos.y < 1.0D || pos.y > 255.0D) return;
+                  BlockPos bp = new BlockPos(pos);
+                  BlockState state = world.getBlockState(bp);
+                  float hardness = state.getDestroySpeed(world, bp);
+                  if (!state.isAir(world, bp) && hardness >= 0.0F && hardness <= MAX_BREAK_HARDNESS
+                          && !state.hasTileEntity() && state.getFluidState().isEmpty()) {
+                      world.destroyBlock(bp, false);
+                  }
+              }
+          }
+          EOF
+          cat > $P/init/InitStands.java <<'EOF'
+          package com.rotpaddon.johnrod.init;
+
+          import com.github.standobyte.jojo.action.Action;
+          import com.github.standobyte.jojo.action.stand.StandEntityAction;
+          import com.github.standobyte.jojo.action.stand.StandEntityBlock;
+          import com.github.standobyte.jojo.action.stand.StandEntityLightAttack;
+          import com.github.standobyte.jojo.action.stand.StandEntityMeleeBarrage;
+          import com.github.standobyte.jojo.entity.stand.StandEntityType;
+          import com.github.standobyte.jojo.init.ModSounds;
+          import com.github.standobyte.jojo.init.power.stand.EntityStandRegistryObject;
+          import com.github.standobyte.jojo.init.power.stand.ModStandsInit;
+          import com.github.standobyte.jojo.power.impl.stand.StandInstance.StandPart;
+          import com.github.standobyte.jojo.power.impl.stand.stats.StandStats;
+          import com.github.standobyte.jojo.power.impl.stand.type.EntityStandType;
+          import com.github.standobyte.jojo.power.impl.stand.type.StandType;
+          import com.rotpaddon.johnrod.AddonMain;
+          import com.rotpaddon.johnrod.action.JohnRodAbility;
+          import com.rotpaddon.johnrod.entity.JohnRodEntity;
+
+          import net.minecraftforge.fml.RegistryObject;
+          import net.minecraftforge.registries.DeferredRegister;
+
+          public class InitStands {
+              @SuppressWarnings("unchecked")
+              public static final DeferredRegister<Action<?>> ACTIONS = DeferredRegister.create(
+                      (Class<Action<?>>) ((Class<?>) Action.class), AddonMain.MOD_ID);
+              @SuppressWarnings("unchecked")
+              public static final DeferredRegister<StandType<?>> STANDS = DeferredRegister.create(
+                      (Class<StandType<?>>) ((Class<?>) StandType.class), AddonMain.MOD_ID);
+
+              // ======================================== John Rod ========================================
+
+              public static final RegistryObject<StandEntityAction> JOHN_ROD_PUNCH = ACTIONS.register("john_rod_punch",
+                      () -> new StandEntityLightAttack(new StandEntityLightAttack.Builder()
+                              .punchSound(ModSounds.STAND_PUNCH_LIGHT)));
+
+              public static final RegistryObject<StandEntityAction> JOHN_ROD_BARRAGE = ACTIONS.register("john_rod_barrage",
+                      () -> new StandEntityMeleeBarrage(new StandEntityMeleeBarrage.Builder()
+                              .barrageHitSound(ModSounds.STAND_PUNCH_LIGHT)));
+
+              public static final RegistryObject<StandEntityAction> JOHN_ROD_BLOCK = ACTIONS.register("john_rod_block",
+                      () -> new StandEntityBlock());
+
+              // lock onto a target
+              public static final RegistryObject<StandEntityAction> JOHN_ROD_MARK = ACTIONS.register("john_rod_mark",
+                      () -> new JohnRodAbility(new StandEntityAction.Builder()
+                              .staminaCost(10.0F)
+                              .cooldown(20)
+                              .standUserWalkSpeed(1.0F), JohnRodAbility.Mode.MARK));
+
+              // the rods of light fall from the sky onto the marked target
+              public static final RegistryObject<StandEntityAction> JOHN_ROD_HUNT = ACTIONS.register("john_rod_hunt",
+                      () -> new JohnRodAbility(new StandEntityAction.Builder()
+                              .staminaCost(100.0F)
+                              .cooldown(300)
+                              .standUserWalkSpeed(1.0F), JohnRodAbility.Mode.HUNT));
+
+              // touch the target in front of you
+              public static final RegistryObject<StandEntityAction> JOHN_ROD_TOUCH = ACTIONS.register("john_rod_touch",
+                      () -> new JohnRodAbility(new StandEntityAction.Builder()
+                              .staminaCost(60.0F)
+                              .cooldown(200)
+                              .standUserWalkSpeed(1.0F)
+                              .partsRequired(StandPart.MAIN_BODY), JohnRodAbility.Mode.TOUCH));
+
+              public static final EntityStandRegistryObject<EntityStandType<StandStats>, StandEntityType<JohnRodEntity>> STAND_JOHN_ROD =
+                      new EntityStandRegistryObject<>("john_rod",
+                              STANDS,
+                              () -> new EntityStandType.Builder<StandStats>()
+                              .color(0xE8F6FF)
+                              .storyPartName(ModStandsInit.PART_3_NAME)
+                              .leftClickHotbar(
+                                      JOHN_ROD_PUNCH.get(),
+                                      JOHN_ROD_BARRAGE.get()
+                                      )
+                              .rightClickHotbar(
+                                      JOHN_ROD_BLOCK.get(),
+                                      JOHN_ROD_MARK.get(),
+                                      JOHN_ROD_HUNT.get(),
+                                      JOHN_ROD_TOUCH.get()
+                                      )
+                              .defaultStats(StandStats.class, new StandStats.Builder()
+                                      .tier(6)
+                                      .power(20)
+                                      .speed(20)
+                                      .range(100, 300)
+                                      .durability(15)
+                                      .precision(15)
+                                      .build())
+                              .build(),
+
+                              InitEntities.ENTITIES,
+                              () -> new StandEntityType<JohnRodEntity>(JohnRodEntity::new, 0.6F, 2.4F)
+                              .summonSound(ModSounds.STAND_SUMMON_DEFAULT)
+                              .unsummonSound(ModSounds.STAND_UNSUMMON_DEFAULT))
+                      .withDefaultStandAttributes();
+          }
+          EOF
+          cat > $P/client/ClientInit.java <<'EOF'
+          package com.rotpaddon.johnrod.client;
+
+          import com.rotpaddon.johnrod.AddonMain;
+          import com.rotpaddon.johnrod.client.render.JohnRodRenderer;
+          import com.rotpaddon.johnrod.init.InitStands;
+
+          import net.minecraftforge.api.distmarker.Dist;
+          import net.minecraftforge.eventbus.api.SubscribeEvent;
+          import net.minecraftforge.fml.client.registry.RenderingRegistry;
+          import net.minecraftforge.fml.common.Mod.EventBusSubscriber;
+          import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
+
+          @EventBusSubscriber(modid = AddonMain.MOD_ID, bus = EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)
+          public class ClientInit {
+
+              @SubscribeEvent
+              public static void onFMLClientSetup(FMLClientSetupEvent event) {
+                  RenderingRegistry.registerEntityRenderingHandler(
+                          InitStands.STAND_JOHN_ROD.getEntityType(), JohnRodRenderer::new);
+              }
+          }
+          EOF
+          cat > $P/client/render/JohnRodRenderer.java <<'EOF'
+          package com.rotpaddon.johnrod.client.render;
+
+          import com.github.standobyte.jojo.client.render.entity.model.stand.StandEntityModel;
+          import com.github.standobyte.jojo.client.render.entity.model.stand.StandModelRegistry;
+          import com.github.standobyte.jojo.client.render.entity.renderer.stand.StandEntityRenderer;
+          import com.rotpaddon.johnrod.AddonMain;
+          import com.rotpaddon.johnrod.entity.JohnRodEntity;
+
+          import net.minecraft.client.renderer.entity.EntityRendererManager;
+          import net.minecraft.util.ResourceLocation;
+
+          public class JohnRodRenderer extends StandEntityRenderer<JohnRodEntity, StandEntityModel<JohnRodEntity>> {
+
+              public JohnRodRenderer(EntityRendererManager renderManager) {
+                  super(renderManager,
+                          StandModelRegistry.registerModel(new ResourceLocation(AddonMain.MOD_ID, "john_rod"), JohnRodModel::new),
+                          new ResourceLocation(AddonMain.MOD_ID, "textures/entity/stand/john_rod.png"), 0);
+              }
+          }
+          EOF
+          cat > $P/client/render/JohnRodModel.java <<'EOF'
+          package com.rotpaddon.johnrod.client.render;
+
+          import com.github.standobyte.jojo.client.render.entity.model.stand.HumanoidStandModel;
+          import com.github.standobyte.jojo.client.render.entity.pose.IModelPose;
+          import com.github.standobyte.jojo.client.render.entity.pose.ModelPose;
+          import com.github.standobyte.jojo.client.render.entity.pose.RotationAngle;
+          import com.rotpaddon.johnrod.entity.JohnRodEntity;
+
+          // The stick-figure geometry (head ring, angular torso, two long legs) lives in
+          // assets/rotp_johnrod/geo/john_rod.geo.json - it is built on the standard humanoid Stand bones.
+          public class JohnRodModel extends HumanoidStandModel<JohnRodEntity> {
+
+              public JohnRodModel() {
+                  super();
+              }
+
+              @Override
+              protected RotationAngle[][] initSummonPoseRotations() {
+                  return new RotationAngle[][] {
+                      new RotationAngle[] {},
+                      new RotationAngle[] {}
+                  };
+              }
+
+              @Override
+              protected ModelPose<JohnRodEntity> initIdlePose() {
+                  return super.initIdlePose();
+              }
+
+              @Override
+              protected IModelPose<JohnRodEntity> initIdlePose2Loop() {
+                  return super.initIdlePose2Loop();
+              }
+          }
+          EOF
+      - name: Build
+        run: |
+          cd out
+          chmod +x gradlew
+          ./gradlew build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: john-rod
+          path: out/build/libs/*.jar
